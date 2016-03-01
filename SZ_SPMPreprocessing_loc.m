@@ -68,7 +68,7 @@ S.type   = 'butterworth';
 S.band   = 'high';
 S.freq   = .1;
 S.dir    = 'twopass';
-S.order  = 2;
+S.order  = 5;
 S.prefix = 'f';
 D = spm_eeg_filter(S);
 disp(['High-pass filtered subject ' num2str(subi) '/' num2str(max(sublist)) ]);
