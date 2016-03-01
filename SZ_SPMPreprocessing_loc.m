@@ -1,14 +1,15 @@
 function SZ_SPMPreprocessing_loc(subi)
 %% EEG preprocessing code in SPM
-%________________________________Written by Sijia Zhao (UCL), 17-10-2015
-spm('defaults', 'eeg');
+%________________________________Written by Sijia Zhao (UCL), updated on 01-03-2016
 
-root  = './';
-outdirraw = [root 'Datasets/'];
-outdirdata  = [root 'SPMdata/'];
+spm('defaults', 'eeg'); % make sure SPM has been installed and added to directory
 
-exptName = 'RAND20TO10'; %for filenaming
-sublist  = 1:20;
+root  = './'; %  PLEASE ADJUST FOR YOURS!
+outdirraw = [root 'Datasets/']; % the folder where you saved all raw data. PLEASE ADJUST FOR YOURS!
+outdirdata  = [root 'SPMdata/']; % the folder where you are going to save all processing data. PLEASE ADJUST FOR YOURS!
+
+exptName = 'myexpt'; %for filenaming; PLEASE ADJUST FOR YOURS!
+sublist  = 1:20; %  PLEASE ADJUST FOR YOURS!
 
 condlist = {'click'};
 triglist = [220]; triglist = round(triglist*2048/44100);
@@ -20,7 +21,6 @@ timewindow_bc       = [-100 0];
 
 jumps           = 0; if jumps == 1; prefix_jumps = 'j';else prefix_jumps = ''; end
 eyeblink        = 0; if eyeblink == 1; prefix_eyelink = 'T'; else prefix_eyelink = ''; end
-baselinec       = 0; if baselinec == 1; prefix_baselinec = 'b'; else prefix_baselinec = ''; end % Dont do BC twice (first in epoch)
 
 outfile_folder =['sub' num2str(subi) '/'];
 outfile = [exptName '_sub' num2str(subi) '_loc'];
@@ -39,6 +39,7 @@ S.conditionlabels = {'Undefined'};
 S.inputformat     = [];
 D = spm_eeg_convert(S);
 disp(['Converted subject ' num2str(subi) '/' num2str(max(sublist))]);
+
 %% Prepare: define channel types
 % EOG: EXG1 & EXG2
 S               = [];
@@ -61,31 +62,6 @@ disp(['Defined channels for subject ' num2str(subi) '/' num2str(max(sublist)) ])
 %         S.save = 1;
 %         D = spm_eeg_prep(S);
 %
-%% High-pass filter (0.1 Hz) (Must before everything!)
-S        = [];
-S.D      = [outdirdata outfile];
-S.type   = 'butterworth';
-S.band   = 'high';
-S.freq   = .1;
-S.dir    = 'twopass';
-S.order  = 5;
-S.prefix = 'f';
-D = spm_eeg_filter(S);
-disp(['High-pass filtered subject ' num2str(subi) '/' num2str(max(sublist)) ]);
-outfile = ['f' outfile];
-
-%% Low-pass filter (30 Hz = for ERP) (if using manual artefacts, put this after prepro2)
-S        = [];
-S.D      = D;
-S.type   = 'butterworth';
-S.band   = 'low';
-S.freq   = 30;
-S.dir    = 'twopass';
-S.order  = 5;
-S.prefix = 'f';
-D = spm_eeg_filter(S);
-disp(['Low-pass filtered (1/2) subject ' num2str(subi) '/' num2str(max(sublist))]);
-outfile = ['f' outfile];
 
 %% Filter artefactual jumps in channels amplitudes
 if jumps == 1
@@ -97,10 +73,36 @@ if jumps == 1
     outfile = [prefix_jumps outfile];
 end
 
+%% High-pass filter (0.1 Hz) (Must before everything!)
+S        = [];
+S.D      = [outdirdata outfile];
+S.type   = 'butterworth';
+S.band   = 'high';
+S.freq   = .1; % * you can adjust this for your own data
+S.dir    = 'twopass'; % * you can try onepass
+S.order  = 5; % if filter instability detected, change this to 4.
+S.prefix = 'f';
+D = spm_eeg_filter(S);
+disp(['High-pass filtered subject ' num2str(subi) '/' num2str(max(sublist)) ]);
+outfile = ['f' outfile];
+
+%% Low-pass filter (30 Hz = for ERP) 
+S        = [];
+S.D      = D;
+S.type   = 'butterworth';
+S.band   = 'low';
+S.freq   = 30; % LP 30 Hz is for ERP analysis
+S.dir    = 'twopass';
+S.order  = 5;
+S.prefix = 'f';
+D = spm_eeg_filter(S);
+disp(['Low-pass filtered subject ' num2str(subi) '/' num2str(max(sublist))]);
+outfile = ['f' outfile];
+
 %% Downsample (256 Hz)
 S             = [];
 S.D           = [outdirdata outfile];
-S.fsample_new = 256;
+S.fsample_new = 256; % new downsampling rate has to be bigger than 2*LP filter.
 S.prefix      = 'd';
 D = spm_eeg_downsample(S);
 disp(['Downsampled subject ' num2str(subi) '/' num2str(max(sublist)) ]);
@@ -154,16 +156,13 @@ S.updatehistory = 1;
 spm_eeg_montage(S);
 
 disp(['Defined montage for subject ' num2str(subi) '/' num2str(max(sublist)) ]);
-
 outfile = ['M' outfile];
-
-%     filename = 'dffRAND20TO10_sub20_run1.dat';
 
 %% Trial definition
 %Read the varying length of the triggers to define the trials
 S               = [];
 S.D             = [outdirdata outfile '.mat'];
-S.timewin       = timewindow_td; % time-window: 500 ms before trigger, 1000 ms post-offset.
+S.timewin       = timewindow_td; % time-window: 100 ms before trigger, 100 ms post-offset.
 for ii=1:numel(condlist)
     S.trialdef(ii).conditionlabel = condlist(ii);
     S.trialdef(ii).eventtype      = 'trigger_up';
@@ -269,16 +268,6 @@ spm_eeg_epochs(S);
 disp(['Epoched subject ' num2str(subi) '/' num2str(max(sublist))]);
 outfile = ['e' outfile];
 
-%% Baseline correction
-if baselinec == 1
-    S                   = [];
-    S.D                 = [outdirdata outfile];
-    S.timewin           = timewindow_bc; % 1000 ms before onset to 1000 ms after offset.
-    spm_eeg_bc(S);
-    disp(['Baseline correction ' num2str(subi) '/' num2str(max(sublist)) ]);
-    outfile = ['b' outfile];
-end
-
 %% Artefact removal: zscore-based automatic outliers removal method
 S       = [];
 S.D     = [outdirdata outfile];
@@ -330,15 +319,25 @@ switch visual
 end
 
 %% Move file
-temp            = dir([root 'c' 'a' prefix_baselinec 'e' prefix_eyelink 'Md' prefix_jumps 'ff' 'RAND20TO10_sub' num2str(subi) '_loc']); % caeMfdf --> aeMfdfSS_sub
-D               = spm_eeg_load([outdirdata root 'a' prefix_baselinec 'e' prefix_eyelink 'Md' prefix_jumps 'ff' 'RAND20TO10_sub' num2str(subi) '_loc.mat']);
+%_____ NOTICE: If you changed the order of previous steps, you need to
+%alter the following paths...
+temp            = dir([root 'c' 'a' 'e' prefix_eyelink 'Md' 'ff' prefix_jumps 'RAND20TO10_sub' num2str(subi) '_loc']);
+D               = spm_eeg_load([outdirdata root 'a' 'e' prefix_eyelink 'Md' 'ff' prefix_jumps 'RAND20TO10_sub' num2str(subi) '_loc.mat']);
 outfile         = ['subject' num2str(subi) '_loc'];
 D = move(D,[root outfile]); % For time frequency
-%% Rename channels to 10-20
-load([root 'Inputs/Electrodes_labels_Biosemi64.mat']);
+
+%% Rename channels to 10/20 labels %  PLEASE ADJUST FOR YOURS!
+% 64 channels
+load([root 'Inputs/Electrodes_labels_Biosemi64.mat']); % Extra function included in the folder Inputs. Change this for 128 channels
 D = spm_eeg_load([outdirdata outfile]);
 D = chanlabels(D,1:64,Electrodes_labels_Biosemi64);
 save(D);
+
+% % 128 channels
+% load([root 'Inputs/Electrodes_labels_Biosemi128.mat']); % Extra file .mat should be made for 128 channels. Please see Electrodes_labels_Biosemi64.mat 
+% D = spm_eeg_load([outdirdata outfile]);
+% D = chanlabels(D,1:64,Electrodes_labels_Biosemi128);
+% save(D);
 
 %% Average
 S=[]; S.D = [root outfile];
